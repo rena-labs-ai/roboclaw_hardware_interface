@@ -87,18 +87,28 @@ std::vector<CommandInterface> RoboClawHardwareInterface::export_command_interfac
 
 return_type RoboClawHardwareInterface::write(const rclcpp::Time &, const rclcpp::Duration &)
 {
-  for (auto & roboclaw : roboclaw_units_) {
-    roboclaw.write();
+  try {
+    for (auto & roboclaw : roboclaw_units_) {
+      roboclaw.write();
+    }
+    return return_type::OK;
+  } catch (const std::exception & e) {
+    std::cerr << "Error writing to roboclaw: " << e.what() << std::endl;
+    return return_type::ERROR;
   }
-  return return_type::OK;
 }
 
 return_type RoboClawHardwareInterface::read(const rclcpp::Time &, const rclcpp::Duration &)
 {
-  for (auto & roboclaw : roboclaw_units_) {
-    roboclaw.read();
+  try {
+    for (auto & roboclaw : roboclaw_units_) {
+      roboclaw.read();
+    }
+    return return_type::OK;
+  } catch (const std::exception & e) {
+    std::cerr << "Error reading from roboclaw: " << e.what() << std::endl;
+    return return_type::ERROR;
   }
-  return return_type::OK;
 }
 
 RoboClawConfiguration RoboClawHardwareInterface::parse_roboclaw_configuration(
