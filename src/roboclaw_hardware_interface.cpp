@@ -15,6 +15,8 @@
 #include "roboclaw_hardware_interface/roboclaw_hardware_interface.hpp"
 
 #include <iostream>
+#include <thread>
+#include <chrono>
 #include <roboclaw_serial/device.hpp>
 
 namespace roboclaw_hardware_interface
@@ -87,33 +89,33 @@ std::vector<CommandInterface> RoboClawHardwareInterface::export_command_interfac
 
 return_type RoboClawHardwareInterface::write(const rclcpp::Time &, const rclcpp::Duration &)
 {
-  try {
-    for (auto & roboclaw : roboclaw_units_) {
-      roboclaw.write();
-    }
-    return return_type::OK;
-  } catch (const std::exception & e) {
-    std::cerr << "Error writing to roboclaw: " << e.what() << std::endl;
-    return return_type::ERROR;
-  }
+  return execute_with_retry(
+    [this]() {
+      for (auto & roboclaw : roboclaw_units_) {
+        roboclaw.write();
+      }
+    },
+    "writing to roboclaw");
 }
 
 return_type RoboClawHardwareInterface::read(const rclcpp::Time &, const rclcpp::Duration &)
 {
-  try {
-    for (auto & roboclaw : roboclaw_units_) {
-      roboclaw.read();
-    }
-    return return_type::OK;
-  } catch (const std::exception & e) {
-    std::cerr << "Error reading from roboclaw: " << e.what() << std::endl;
-    return return_type::ERROR;
-  }
+  return execute_with_retry(
+    [this]() {
+      for (auto & roboclaw : roboclaw_units_) {
+        roboclaw.read();
+      }
+    },
+    "reading from roboclaw");
 }
 
 RoboClawConfiguration RoboClawHardwareInterface::parse_roboclaw_configuration(
   const HardwareInfo & hardware_info)
 {
+  // Parse retry configuration parameters
+  retry_count_ = parse_int_parameter(hardware_info, "retry_count", 3, "retry_count");
+  retry_delay_ms_ = parse_int_parameter(hardware_info, "retry_delay_ms", 10, "retry_delay_ms");
+
   // Define the configuration map
   RoboClawConfiguration roboclaw_config;
 
@@ -192,6 +194,43 @@ RoboClawConfiguration RoboClawHardwareInterface::parse_roboclaw_configuration(
   }
 
   return roboclaw_config;
+}
+
+int RoboClawHardwareInterface::parse_int_parameter(
+  const HardwareInfo & hardware_info,
+  const std::string & param_name,
+  int default_value,
+  const std::string & param_display_name)
+{
+  try {
+    return std::stoi(hardware_info.hardware_parameters.at(param_name));
+  } catch (const std::out_of_range &) {
+    return default_value;
+  } catch (const std::invalid_argument &) {
+    std::cerr << "Invalid " << param_display_name << " parameter, using default: " << default_value << std::endl;
+    return default_value;
+  }
+}
+
+return_type RoboClawHardwareInterface::execute_with_retry(
+  std::function<void()> operation,
+  const std::string & operation_name)
+{
+  for (int attempt = 0; attempt <= retry_count_; ++attempt) {
+    try {
+      operation();
+      return return_type::OK;
+    } catch (const std::exception & e) {
+      if (attempt < retry_count_) {
+        std::cerr << "Warning: Error " << operation_name << " (attempt " << (attempt + 1) << "/" << (retry_count_ + 1) << "): " << e.what() << std::endl;
+        std::this_thread::sleep_for(std::chrono::milliseconds(retry_delay_ms_));
+      } else {
+        std::cerr << "Error: Failed " << operation_name << " after " << (retry_count_ + 1) << " attempts: " << e.what() << std::endl;
+        return return_type::ERROR;
+      }
+    }
+  }
+  return return_type::ERROR;
 }
 
 }  // namespace roboclaw_hardware_interface

@@ -18,6 +18,9 @@
 #include <map>
 #include <string>
 #include <vector>
+#include <chrono>
+#include <thread>
+#include <functional>
 
 #include <roboclaw_serial/interface.hpp>
 
@@ -110,17 +113,41 @@ public:
 
   /// Validate and organize hardware parameters from hardware information.
   /**
-     * The hardware info is parsed and validated, checking for parameter
-     * consistency and validity. Parameters are organized and stored in the
-     * roboclaws_ member variable as a
-     * std::map<uint8_t, std::map<std::string, std::optional<MotorConfig>>>,
-     * which maps a roboclaw address (uint8_t) to a map of optional motor
-     * configurations, the keys for which are strings, either "M1" or "M2"
-     *
-     * \param[in] hardware_info structure with data from URDF.
-     *
-     */
+   * The hardware info is parsed and validated, checking for parameter
+   * consistency and validity. Parameters are organized and stored in the
+   * roboclaws_ member variable as a
+   * std::map<uint8_t, std::map<std::string, std::optional<MotorConfig>>>,
+   * which maps a roboclaw address (uint8_t) to a map of optional motor
+   * configurations, the keys for which are strings, either "M1" or "M2"
+   *
+   * \param[in] hardware_info structure with data from URDF.
+   *
+   */
   RoboClawConfiguration parse_roboclaw_configuration(const HardwareInfo & hardware_info);
+
+  /// Parse integer parameter from hardware info with default value
+  /**
+   * \param[in] hardware_info structure with data from URDF.
+   * \param[in] param_name name of the parameter to parse.
+   * \param[in] default_value default value if parameter is missing or invalid.
+   * \param[in] param_display_name display name for error messages.
+   * \return parsed integer value or default if not found/invalid.
+   */
+  int parse_int_parameter(
+    const HardwareInfo & hardware_info,
+    const std::string & param_name,
+    int default_value,
+    const std::string & param_display_name);
+
+  /// Execute operation with retry logic
+  /**
+   * \param[in] operation function to execute (lambda or function pointer).
+   * \param[in] operation_name name of operation for error messages.
+   * \return return_type::OK if operation succeeds, return_type::ERROR if all retries fail.
+   */
+  return_type execute_with_retry(
+    std::function<void()> operation,
+    const std::string & operation_name);
 
 private:
   /// Shared pointer to the RoboClaw driver interface
@@ -128,6 +155,12 @@ private:
 
   /// Vector of uniqely addressable roboclaw units
   std::vector<RoboClawUnit> roboclaw_units_;
+
+  /// Number of retry attempts on error
+  int retry_count_;
+
+  /// Delay between retries in milliseconds
+  int retry_delay_ms_;
 };
 }  // namespace roboclaw_hardware_interface
 
